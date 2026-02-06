@@ -3,14 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-import os
-# Force CPU usage to avoid OOM errors on limited GPU memory
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
 import numpy as np
 from PIL import Image
 import io
 import tensorflow as tf
+import os
 from model import load_model
 
 app = FastAPI(title="Image Super-Resolution API")
@@ -44,7 +41,10 @@ async def startup_event():
 # def read_root():
 #     return {"message": "Image Super-Resolution API is running"}
 
-# Mount Frontend (moved to end)
+# Mount Frontend (must be after API routes)
+# We need to point to the frontend directory relative to this file
+frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend"))
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
 
 def preprocess_image(image_bytes: bytes):
     """
@@ -94,11 +94,6 @@ async def predict(file: UploadFile = File(...)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-# Mount Frontend (must be after API routes)
-# We need to point to the frontend directory relative to this file
-frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend"))
-app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
