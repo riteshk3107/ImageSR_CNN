@@ -1,48 +1,82 @@
+# ===============================
 # Python
+# ===============================
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-
-# Virtual environments
+*.pyd
+*.so
+.Python
+.env
+.venv
 venv/
-.venv/
-env/
+ENV/
 
+# ===============================
 # Jupyter
+# ===============================
 .ipynb_checkpoints/
 
-# PyTorch
+# ===============================
+# PyTorch / ML
+# ===============================
 *.pt
-*.pth
 *.ckpt
+*.onnx
+*.h5
 
-# Data (never commit datasets)
+# ===============================
+# Datasets (NEVER COMMIT DATA)
+# ===============================
 data/
+dataset/
 datasets/
 images/
-*.zip
-*.tar.gz
+input/
+output/
+hr/
+lr/
+train/
+val/
+test/
 
-# Outputs
-outputs/
+# ===============================
+# Generated Results
+# ===============================
 results/
-runs/
+outputs/
+samples/
+sr_images/
+predictions/
 logs/
 
-# Cache
+# ===============================
+# Cache & Temp
+# ===============================
 .cache/
+tmp/
+temp/
 *.log
 
-# OS junk
+# ===============================
+# IDE & OS
+# ===============================
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
+# ===============================
+# Config Secrets
+# ===============================
+*.env
+config.yaml
+config.json
 
-# Conda
-*.conda
-
-# Temporary
-tmp/
+# ===============================
+# Experiment Tracking
+# ===============================
+wandb/
+mlruns/
+tensorboard/
+runs/

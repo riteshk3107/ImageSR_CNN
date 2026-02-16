@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SRCNN Super-Resolution</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0c0a14;
+      --bg-gradient: linear-gradient(135deg, #1a0a2e 0%, #0f0a1a 30%, #0c0a14 60%, #0d1117 100%);
+      --surface: rgba(26, 20, 45, 0.85);
+      --surface-glass: rgba(255, 255, 255, 0.04);
+      --border: rgba(139, 92, 246, 0.25);
+      --text: #f0eef6;
+      --muted: #9ca3af;
+      --accent: #a78bfa;
+      --accent-2: #f472b6;
+      --accent-3: #22d3ee;
+      --gradient-primary: linear-gradient(135deg, #a78bfa 0%, #c084fc 50%, #e879f9 100%);
+      --gradient-upload: linear-gradient(135deg, rgba(167, 139, 250, 0.2) 0%, rgba(244, 114, 182, 0.15) 100%);
+      --success: #34d399;
+      --success-glow: rgba(52, 211, 153, 0.35);
+      --error: #fb7185;
+      --error-bg: rgba(251, 113, 133, 0.12);
+      --shadow-glow: 0 0 40px rgba(167, 139, 250, 0.15);
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      background-image: var(--bg-gradient);
+      background-attachment: fixed;
+      color: var(--text);
+      min-height: 100vh;
+      margin: 0;
+      padding: 2rem 1rem;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60vh;
+      background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(167, 139, 250, 0.2), transparent);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    h1 {
+      font-weight: 700;
+      font-size: 2rem;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.35rem;
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 1rem;
+      margin-bottom: 2rem;
+      max-width: 32rem;
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2.75rem;
+      text-align: center;
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255,255,255,0.04);
+      transition: border-color 0.25s, background 0.25s, box-shadow 0.25s;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.dragover {
+      border-color: rgba(167, 139, 246, 0.6);
+      background: var(--gradient-upload);
+      box-shadow: 0 0 50px rgba(167, 139, 250, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    .upload-zone input[type="file"] {
+      display: none;
+    }
+
+    .upload-zone label {
+      cursor: pointer;
+      display: block;
+    }
+
+    .upload-icon {
+      font-size: 3rem;
+      margin-bottom: 0.85rem;
+      filter: drop-shadow(0 0 12px rgba(167, 139, 250, 0.4));
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+
+    .upload-text {
+      font-size: 1.05rem;
+      color: var(--muted);
+    }
+
+    .upload-text strong {
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .btn {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 0.8rem 1.6rem;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--gradient-primary);
+      color: #0c0a14;
+      margin-top: 1.25rem;
+      box-shadow: 0 4px 20px rgba(167, 139, 250, 0.4);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(167, 139, 250, 0.5);
+      filter: brightness(1.05);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-upload {
+      background: var(--surface-glass);
+      color: var(--accent);
+      border: 2px solid rgba(167, 139, 246, 0.5);
+      margin-top: 1rem;
+      backdrop-filter: blur(8px);
+    }
+
+    .btn-upload:hover {
+      background: rgba(167, 139, 246, 0.15);
+      border-color: var(--accent);
+      box-shadow: 0 0 24px rgba(167, 139, 250, 0.25);
+    }
+
+    .btn-primary.submit-hidden {
+      display: none;
+    }
+
+    .error-msg {
+      background: var(--error-bg);
+      color: var(--error);
+      padding: 0.85rem 1.1rem;
+      border-radius: var(--radius-sm);
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      border: 1px solid rgba(251, 113, 133, 0.3);
+    }
+
+    .result-section {
+      margin-top: 2.5rem;
+    }
+
+    .result-section h2 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 1.25rem;
+      color: var(--text);
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 640px) {
+      .comparison {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .comparison-item {
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03);
+      transition: border-color 0.25s, box-shadow 0.25s;
+    }
+
+    .comparison-item:hover {
+      border-color: rgba(167, 139, 246, 0.4);
+      box-shadow: 0 8px 32px rgba(167, 139, 250, 0.12);
+    }
+
+    .comparison-item.srcnn {
+      border-color: rgba(52, 211, 153, 0.3);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.2), 0 0 0 1px rgba(52, 211, 153, 0.1);
+    }
+
+    .comparison-item.srcnn:hover {
+      border-color: rgba(52, 211, 153, 0.5);
+      box-shadow: 0 8px 32px var(--success-glow);
+    }
+
+    .zoom-pan-viewport {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      height: 420px;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      background: rgba(0,0,0,0.2);
+    }
+
+    .zoom-pan-viewport:active {
+      cursor: grabbing;
+    }
+
+    .zoom-pan-inner {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    .zoom-pan-inner img {
+      display: block;
+      vertical-align: top;
+      width: 100%;
+      height: auto;
+      pointer-events: none;
+    }
+
+    .zoom-pan-controls {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      border-top: 1px solid var(--border);
+      background: rgba(0,0,0,0.2);
+    }
+
+    .zoom-pan-controls button {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-glass);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+
+    .zoom-pan-controls button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(167, 139, 246, 0.1);
+    }
+
+    .comparison-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.7rem 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .comparison-item.srcnn .comparison-label {
+      color: var(--success);
+      text-shadow: 0 0 20px var(--success-glow);
+    }
+
+    .view-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      align-items: center;
+    }
+
+    .btn-download {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.55rem 1rem;
+      border-radius: var(--radius-sm);
+      background: rgba(52, 211, 153, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(52, 211, 153, 0.4);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .btn-download:hover {
+      background: rgba(52, 211, 153, 0.25);
+      border-color: var(--success);
+      box-shadow: 0 0 20px var(--success-glow);
+    }
+
+    .view-tabs button {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.55rem 1.1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-glass);
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+
+    .view-tabs button:hover {
+      color: var(--accent-3);
+      border-color: rgba(34, 211, 238, 0.4);
+      background: rgba(34, 211, 238, 0.08);
+    }
+
+    .view-tabs button.active {
+      background: var(--gradient-primary);
+      color: #0c0a14;
+      border-color: transparent;
+      box-shadow: 0 4px 16px rgba(167, 139, 250, 0.35);
+    }
+
+    .comparison-wrap[data-view="slider"] .comparison {
+      display: none;
+    }
+
+    .comparison-wrap[data-view="side"] .slider-wrap {
+      display: none;
+    }
+
+    .slider-wrap {
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+    }
+
+    .before-after-slider {
+      position: relative;
+      width: 100%;
+      height: 420px;
+      overflow: hidden;
+      cursor: col-resize;
+      user-select: none;
+    }
+
+    .before-after-slider .img-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-color: rgba(0,0,0,0.3);
+      pointer-events: none;
+    }
+
+    .before-after-slider .img-layer.after {
+      clip-path: inset(0 0 0 50%);
+      -webkit-clip-path: inset(0 0 0 50%);
+    }
+
+    .before-after-slider .slider-handle {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 4px;
+      height: 100%;
+      margin-left: -2px;
+      background: var(--gradient-primary);
+      box-shadow: 0 0 20px rgba(167, 139, 250, 0.6), 0 0 0 2px rgba(12, 10, 20, 0.8);
+      z-index: 2;
+    }
+
+    .before-after-slider .slider-handle::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 44px;
+      height: 44px;
+      margin: -22px 0 0 -22px;
+      border: 3px solid transparent;
+      border-radius: 50%;
+      background: linear-gradient(var(--surface), var(--surface)) padding-box,
+                  var(--gradient-primary) border-box;
+      box-shadow: 0 0 24px rgba(167, 139, 250, 0.4);
+      pointer-events: none;
+    }
+
+    .before-after-slider .slider-handle::after {
+      content: '⋮⋮';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      font-size: 14px;
+      font-weight: bold;
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      letter-spacing: -2px;
+    }
+
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--border);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .slider-labels span:first-child {
+      color: var(--accent-2);
+    }
+
+    .slider-labels span:last-child {
+      color: var(--success);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>SRCNN Super-Resolution</h1>
+    <p class="subtitle">Upload an image to see the low-resolution (bicubic) version and the SRCNN-enhanced result.</p>
+
+    <form method="post" action="/" enctype="multipart/form-data">
+      <div class="upload-zone" id="uploadZone">
+        <span class="upload-icon">📷</span>
+        <p class="upload-text">
+          Choose an image or drag it here<br>
+          PNG, JPG, JPEG, BMP, WEBP (max 8 MB)
+        </p>
+        <input type="file" name="image" id="image" accept="image/*" required>
+        <label for="image" class="btn btn-upload">Upload image</label>
+        <button type="submit" class="btn btn-primary submit-hidden" id="submitBtn">Process with SRCNN</button>
+      </div>
+    </form>
+
+    {% if error %}
+    <div class="error-msg">{{ error }}</div>
+    {% endif %}
+
+    {% if result %}
+    <section class="result-section">
+      <h2>Comparison</h2>
+      <div class="view-tabs">
+        <button type="button" class="active" data-view-tab="side">Side by side</button>
+        <button type="button" data-view-tab="slider">Before / After slider</button>
+        <a href="#" class="btn btn-download" id="downloadLowRes" download="low_resolution.png">Download low-res</a>
+        <a href="#" class="btn btn-download" id="downloadSrcnn" download="srcnn_enhanced.png">Download enhanced</a>
+      </div>
+      <div class="comparison-wrap" data-view="side" id="comparisonWrap">
+      <div class="comparison">
+        <div class="comparison-item">
+          <div class="zoom-pan-viewport" data-zoom-pan>
+            <div class="zoom-pan-inner">
+              <img id="resultImgLowRes" src="data:image/png;base64,{{ result.low_res }}" alt="Low resolution (bicubic)">
+            </div>
+          </div>
+          <div class="zoom-pan-controls">
+            <button type="button" data-zoom-out aria-label="Zoom out">−</button>
+            <button type="button" data-zoom-reset aria-label="Reset">Reset</button>
+            <button type="button" data-zoom-in aria-label="Zoom in">+</button>
+          </div>
+          <div class="comparison-label">Low resolution (bicubic) — scroll to zoom, drag to pan (synced)</div>
+        </div>
+        <div class="comparison-item srcnn">
+          <div class="zoom-pan-viewport" data-zoom-pan>
+            <div class="zoom-pan-inner">
+              <img id="resultImgSrcnn" src="data:image/png;base64,{{ result.srcnn }}" alt="SRCNN enhanced">
+            </div>
+          </div>
+          <div class="zoom-pan-controls">
+            <button type="button" data-zoom-out aria-label="Zoom out">−</button>
+            <button type="button" data-zoom-reset aria-label="Reset">Reset</button>
+            <button type="button" data-zoom-in aria-label="Zoom in">+</button>
+          </div>
+          <div class="comparison-label">SRCNN enhanced — scroll to zoom, drag to pan (synced)</div>
+        </div>
+      </div>
+      <div class="slider-wrap" id="sliderWrap">
+        <div class="before-after-slider" id="beforeAfterSlider" data-split="50">
+          <div class="img-layer before" style="background-image: url('data:image/png;base64,{{ result.low_res }}');"></div>
+          <div class="img-layer after" style="background-image: url('data:image/png;base64,{{ result.srcnn }}');"></div>
+          <div class="slider-handle" id="sliderHandle"></div>
+        </div>
+        <div class="slider-labels">
+          <span>← Low resolution (bicubic)</span>
+          <span>SRCNN enhanced →</span>
+        </div>
+      </div>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+
+  <script>
+    var zone = document.getElementById('uploadZone');
+    var input = document.getElementById('image');
+    var submitBtn = document.getElementById('submitBtn');
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function (e) {
+      zone.addEventListener(e, function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+      });
+    });
+
+    ['dragenter', 'dragover'].forEach(function (e) {
+      zone.addEventListener(e, function () { zone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(function (e) {
+      zone.addEventListener(e, function () { zone.classList.remove('dragover'); });
+    });
+
+    function toggleSubmit(show) {
+      if (show) {
+        submitBtn.classList.remove('submit-hidden');
+        submitBtn.disabled = false;
+      } else {
+        submitBtn.classList.add('submit-hidden');
+        submitBtn.disabled = true;
+      }
+    }
+
+    zone.addEventListener('drop', function (e) {
+      var files = e.dataTransfer.files;
+      if (files.length) {
+        input.files = files;
+        toggleSubmit(true);
+      }
+    });
+
+    input.addEventListener('change', function () {
+      toggleSubmit(!!input.files.length);
+    });
+
+    // ----- Download result images -----
+    var downloadLowRes = document.getElementById('downloadLowRes');
+    var downloadSrcnn = document.getElementById('downloadSrcnn');
+    var resultImgLowRes = document.getElementById('resultImgLowRes');
+    var resultImgSrcnn = document.getElementById('resultImgSrcnn');
+    if (downloadLowRes && resultImgLowRes) {
+      downloadLowRes.addEventListener('click', function (e) {
+        e.preventDefault();
+        var a = document.createElement('a');
+        a.href = resultImgLowRes.src;
+        a.download = 'low_resolution.png';
+        a.click();
+      });
+    }
+    if (downloadSrcnn && resultImgSrcnn) {
+      downloadSrcnn.addEventListener('click', function (e) {
+        e.preventDefault();
+        var a = document.createElement('a');
+        a.href = resultImgSrcnn.src;
+        a.download = 'srcnn_enhanced.png';
+        a.click();
+      });
+    }
+
+    // ----- View tabs (Side by side / Slider) -----
+    var comparisonWrap = document.getElementById('comparisonWrap');
+    var viewTabButtons = document.querySelectorAll('[data-view-tab]');
+    if (comparisonWrap && viewTabButtons.length) {
+      viewTabButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var view = btn.getAttribute('data-view-tab');
+          comparisonWrap.setAttribute('data-view', view);
+          viewTabButtons.forEach(function (b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+        });
+      });
+    }
+
+    // ----- Before / After slider -----
+    var slider = document.getElementById('beforeAfterSlider');
+    var sliderHandle = document.getElementById('sliderHandle');
+    if (slider && sliderHandle) {
+      var afterLayer = slider.querySelector('.img-layer.after');
+      function setSplit(pct) {
+        pct = Math.max(0, Math.min(100, pct));
+        slider.setAttribute('data-split', pct);
+        afterLayer.style.clipPath = 'inset(0 0 0 ' + pct + '%)';
+        afterLayer.style.webkitClipPath = 'inset(0 0 0 ' + pct + '%)';
+        sliderHandle.style.left = pct + '%';
+      }
+      var sliderDragging = false;
+      slider.addEventListener('mousedown', function (e) {
+        if (e.target !== sliderHandle && !sliderHandle.contains(e.target)) {
+          var rect = slider.getBoundingClientRect();
+          setSplit((e.clientX - rect.left) / rect.width * 100);
+        }
+        sliderDragging = true;
+      });
+      window.addEventListener('mousemove', function (e) {
+        if (!sliderDragging) return;
+        var rect = slider.getBoundingClientRect();
+        setSplit((e.clientX - rect.left) / rect.width * 100);
+      });
+      window.addEventListener('mouseup', function () { sliderDragging = false; });
+      setSplit(50);
+    }
+
+    // ----- Zoom & Pan (synced between both images) -----
+    var viewports = document.querySelectorAll('[data-zoom-pan]');
+    var sharedState = { scale: 1, tx: 0, ty: 0 };
+    var zoomPanInstances = [];
+
+    function initZoomPan(viewport, index) {
+      var inner = viewport.querySelector('.zoom-pan-inner');
+      var img = inner.querySelector('img');
+      var minScale = 0.25, maxScale = 5;
+      var zoomStep = 0.2;
+      var panning = false;
+      var startX, startY, startTx, startTy;
+
+      function applyTransform(skipSync) {
+        inner.style.transform = 'translate(' + sharedState.tx + 'px,' + sharedState.ty + 'px) scale(' + sharedState.scale + ')';
+        if (!skipSync && viewports.length === 2) {
+          viewports.forEach(function (vp, i) {
+            if (i !== index) {
+              var inr = vp.querySelector('.zoom-pan-inner');
+              if (inr) inr.style.transform = 'translate(' + sharedState.tx + 'px,' + sharedState.ty + 'px) scale(' + sharedState.scale + ')';
+            }
+          });
+        }
+      }
+
+      function zoomAt(clientX, clientY, delta) {
+        var rect = viewport.getBoundingClientRect();
+        var x = clientX - rect.left;
+        var y = clientY - rect.top;
+        var scale = sharedState.scale, tx = sharedState.tx, ty = sharedState.ty;
+        var newScale = delta > 0 ? scale * (1 + zoomStep) : scale * (1 - zoomStep);
+        newScale = Math.max(minScale, Math.min(maxScale, newScale));
+        if (newScale === scale) return;
+        sharedState.tx = x - (x - tx) * newScale / scale;
+        sharedState.ty = y - (y - ty) * newScale / scale;
+        sharedState.scale = newScale;
+        applyTransform();
+      }
+
+      function fitFullView() {
+        var r = viewport.getBoundingClientRect();
+        var w = inner.offsetWidth, h = inner.offsetHeight;
+        sharedState.scale = Math.min(r.width / w, r.height / h, 1);
+        sharedState.tx = (r.width - w * sharedState.scale) / 2;
+        sharedState.ty = (r.height - h * sharedState.scale) / 2;
+        applyTransform();
+      }
+
+      function reset() {
+        fitFullView();
+      }
+
+      viewport.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        zoomAt(e.clientX, e.clientY, -e.deltaY);
+      }, { passive: false });
+
+      viewport.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        panning = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        startTx = sharedState.tx;
+        startTy = sharedState.ty;
+      });
+
+      window.addEventListener('mousemove', function (e) {
+        if (!panning) return;
+        sharedState.tx = startTx + (e.clientX - startX);
+        sharedState.ty = startTy + (e.clientY - startY);
+        applyTransform();
+      });
+
+      window.addEventListener('mouseup', function () { panning = false; });
+
+      viewport.closest('.comparison-item').querySelectorAll('[data-zoom-out]').forEach(function (btn) {
+        btn.addEventListener('click', function () { zoomAt(viewport.offsetWidth / 2, viewport.offsetHeight / 2, -1); });
+      });
+      viewport.closest('.comparison-item').querySelectorAll('[data-zoom-reset]').forEach(function (btn) {
+        btn.addEventListener('click', reset);
+      });
+      viewport.closest('.comparison-item').querySelectorAll('[data-zoom-in]').forEach(function (btn) {
+        btn.addEventListener('click', function () { zoomAt(viewport.offsetWidth / 2, viewport.offsetHeight / 2, 1); });
+      });
+
+      img.addEventListener('load', fitFullView);
+      if (img.complete) img.dispatchEvent(new Event('load'));
+
+      return { applyTransform: applyTransform, fitFullView: fitFullView };
+    }
+
+    viewports.forEach(function (vp, i) { initZoomPan(vp, i); });
+  </script>
+</body>
+</html>
