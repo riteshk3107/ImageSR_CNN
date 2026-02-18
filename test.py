@@ -4,10 +4,15 @@ from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 
-# ---------------- MODEL (must match srcnn.py: upgraded 5-layer + residual) ----------------
-class SRCNN(nn.Module):
+# ---------------- Residual SRCNN (must match srcnn.py) ----------------
+class ResidualSRCNN(nn.Module):
+    """
+    5-layer residual SRCNN used for inference.
+    Kernel sizes: [9, 5, 5, 5, 5], channels: 1 -> 64 -> 64 -> 32 -> 32 -> 1,
+    receptive field: 25x25. The network outputs a residual which is added to the bicubic input.
+    """
     def __init__(self):
-        super(SRCNN, self).__init__()
+        super(ResidualSRCNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 64, kernel_size=9, padding=4)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=5, padding=2)
         self.conv3 = nn.Conv2d(64, 32, kernel_size=5, padding=2)
@@ -16,17 +21,17 @@ class SRCNN(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        x = self.relu(self.conv3(x))
-        x = self.relu(self.conv4(x))
-        x = self.conv5(x)
-        return x
+        out = self.relu(self.conv1(x))
+        out = self.relu(self.conv2(out))
+        out = self.relu(self.conv3(out))
+        out = self.relu(self.conv4(out))
+        residual = self.conv5(out)
+        return residual
     
 
 # ---------------- LOAD MODEL ----------------
 def load_model(path="srcnn.pth"):
-    model = SRCNN()
+    model = ResidualSRCNN()
     model.load_state_dict(torch.load(path, map_location="cpu"))
     model.eval()
     return model

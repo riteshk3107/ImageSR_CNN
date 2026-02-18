@@ -204,9 +204,15 @@
 
     .comparison {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 1.5rem;
       align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .comparison {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
 
     @media (max-width: 640px) {
@@ -249,6 +255,13 @@
       user-select: none;
       -webkit-user-select: none;
       background: rgba(0,0,0,0.2);
+    }
+
+    .zoom-pan-viewport:fullscreen {
+      width: 100%;
+      height: 100vh;
+      max-height: none;
+      background: #000;
     }
 
     .zoom-pan-viewport:active {
@@ -476,7 +489,11 @@
 <body>
   <div class="container">
     <h1>SRCNN Super-Resolution</h1>
-    <p class="subtitle">Upload an image to see the low-resolution (bicubic) version and the SRCNN-enhanced result.</p>
+    <p class="subtitle">
+      Upload an image to see the bicubic (low‑resolution) version and the
+      SRCNN‑enhanced result. The network operates on the luminance (Y) channel,
+      while the preview here is shown in RGB for easier inspection.
+    </p>
 
     <form method="post" action="/" enctype="multipart/form-data">
       <div class="upload-zone" id="uploadZone">
@@ -509,6 +526,20 @@
         <div class="comparison-item">
           <div class="zoom-pan-viewport" data-zoom-pan>
             <div class="zoom-pan-inner">
+              <img id="resultImgOriginal" src="data:image/png;base64,{{ result.original }}" alt="Original">
+            </div>
+          </div>
+          <div class="zoom-pan-controls">
+            <button type="button" data-zoom-out aria-label="Zoom out">−</button>
+            <button type="button" data-zoom-reset aria-label="Reset">Reset</button>
+            <button type="button" data-zoom-in aria-label="Zoom in">+</button>
+            <button type="button" data-fullscreen aria-label="Fullscreen">⤢</button>
+          </div>
+          <div class="comparison-label">Original — scroll to zoom, drag to pan</div>
+        </div>
+        <div class="comparison-item">
+          <div class="zoom-pan-viewport" data-zoom-pan>
+            <div class="zoom-pan-inner">
               <img id="resultImgLowRes" src="data:image/png;base64,{{ result.low_res }}" alt="Low resolution (bicubic)">
             </div>
           </div>
@@ -516,8 +547,9 @@
             <button type="button" data-zoom-out aria-label="Zoom out">−</button>
             <button type="button" data-zoom-reset aria-label="Reset">Reset</button>
             <button type="button" data-zoom-in aria-label="Zoom in">+</button>
+            <button type="button" data-fullscreen aria-label="Fullscreen">⤢</button>
           </div>
-          <div class="comparison-label">Low resolution (bicubic) — scroll to zoom, drag to pan (synced)</div>
+          <div class="comparison-label">Low resolution (bicubic) — scroll to zoom, drag to pan</div>
         </div>
         <div class="comparison-item srcnn">
           <div class="zoom-pan-viewport" data-zoom-pan>
@@ -529,8 +561,9 @@
             <button type="button" data-zoom-out aria-label="Zoom out">−</button>
             <button type="button" data-zoom-reset aria-label="Reset">Reset</button>
             <button type="button" data-zoom-in aria-label="Zoom in">+</button>
+            <button type="button" data-fullscreen aria-label="Fullscreen">⤢</button>
           </div>
-          <div class="comparison-label">SRCNN enhanced — scroll to zoom, drag to pan (synced)</div>
+          <div class="comparison-label">SRCNN enhanced — scroll to zoom, drag to pan</div>
         </div>
       </div>
       <div class="slider-wrap" id="sliderWrap">
@@ -657,51 +690,42 @@
       setSplit(50);
     }
 
-    // ----- Zoom & Pan (synced between both images) -----
+    // ----- Zoom & Pan (independent per image) + Fullscreen -----
     var viewports = document.querySelectorAll('[data-zoom-pan]');
-    var sharedState = { scale: 1, tx: 0, ty: 0 };
-    var zoomPanInstances = [];
 
-    function initZoomPan(viewport, index) {
+    function initZoomPan(viewport) {
       var inner = viewport.querySelector('.zoom-pan-inner');
       var img = inner.querySelector('img');
       var minScale = 0.25, maxScale = 5;
       var zoomStep = 0.2;
       var panning = false;
       var startX, startY, startTx, startTy;
+      var state = { scale: 1, tx: 0, ty: 0 };
 
-      function applyTransform(skipSync) {
-        inner.style.transform = 'translate(' + sharedState.tx + 'px,' + sharedState.ty + 'px) scale(' + sharedState.scale + ')';
-        if (!skipSync && viewports.length === 2) {
-          viewports.forEach(function (vp, i) {
-            if (i !== index) {
-              var inr = vp.querySelector('.zoom-pan-inner');
-              if (inr) inr.style.transform = 'translate(' + sharedState.tx + 'px,' + sharedState.ty + 'px) scale(' + sharedState.scale + ')';
-            }
-          });
-        }
+      function applyTransform() {
+        inner.style.transform = 'translate(' + state.tx + 'px,' + state.ty + 'px) scale(' + state.scale + ')';
       }
 
       function zoomAt(clientX, clientY, delta) {
         var rect = viewport.getBoundingClientRect();
         var x = clientX - rect.left;
         var y = clientY - rect.top;
-        var scale = sharedState.scale, tx = sharedState.tx, ty = sharedState.ty;
+        var scale = state.scale, tx = state.tx, ty = state.ty;
         var newScale = delta > 0 ? scale * (1 + zoomStep) : scale * (1 - zoomStep);
         newScale = Math.max(minScale, Math.min(maxScale, newScale));
         if (newScale === scale) return;
-        sharedState.tx = x - (x - tx) * newScale / scale;
-        sharedState.ty = y - (y - ty) * newScale / scale;
-        sharedState.scale = newScale;
+        state.tx = x - (x - tx) * newScale / scale;
+        state.ty = y - (y - ty) * newScale / scale;
+        state.scale = newScale;
         applyTransform();
       }
 
       function fitFullView() {
         var r = viewport.getBoundingClientRect();
         var w = inner.offsetWidth, h = inner.offsetHeight;
-        sharedState.scale = Math.min(r.width / w, r.height / h, 1);
-        sharedState.tx = (r.width - w * sharedState.scale) / 2;
-        sharedState.ty = (r.height - h * sharedState.scale) / 2;
+        state.scale = Math.min(r.width / w, r.height / h, 1);
+        state.tx = (r.width - w * state.scale) / 2;
+        state.ty = (r.height - h * state.scale) / 2;
         applyTransform();
       }
 
@@ -719,36 +743,48 @@
         panning = true;
         startX = e.clientX;
         startY = e.clientY;
-        startTx = sharedState.tx;
-        startTy = sharedState.ty;
+        startTx = state.tx;
+        startTy = state.ty;
       });
 
       window.addEventListener('mousemove', function (e) {
         if (!panning) return;
-        sharedState.tx = startTx + (e.clientX - startX);
-        sharedState.ty = startTy + (e.clientY - startY);
+        state.tx = startTx + (e.clientX - startX);
+        state.ty = startTy + (e.clientY - startY);
         applyTransform();
       });
 
       window.addEventListener('mouseup', function () { panning = false; });
 
-      viewport.closest('.comparison-item').querySelectorAll('[data-zoom-out]').forEach(function (btn) {
-        btn.addEventListener('click', function () { zoomAt(viewport.offsetWidth / 2, viewport.offsetHeight / 2, -1); });
-      });
-      viewport.closest('.comparison-item').querySelectorAll('[data-zoom-reset]').forEach(function (btn) {
-        btn.addEventListener('click', reset);
-      });
-      viewport.closest('.comparison-item').querySelectorAll('[data-zoom-in]').forEach(function (btn) {
-        btn.addEventListener('click', function () { zoomAt(viewport.offsetWidth / 2, viewport.offsetHeight / 2, 1); });
-      });
+      var comparisonItem = viewport.closest('.comparison-item');
+      if (comparisonItem) {
+        comparisonItem.querySelectorAll('[data-zoom-out]').forEach(function (btn) {
+          btn.addEventListener('click', function () { zoomAt(viewport.offsetWidth / 2, viewport.offsetHeight / 2, -1); });
+        });
+        comparisonItem.querySelectorAll('[data-zoom-reset]').forEach(function (btn) {
+          btn.addEventListener('click', reset);
+        });
+        comparisonItem.querySelectorAll('[data-zoom-in]').forEach(function (btn) {
+          btn.addEventListener('click', function () { zoomAt(viewport.offsetWidth / 2, viewport.offsetHeight / 2, 1); });
+        });
+        comparisonItem.querySelectorAll('[data-fullscreen]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            if (!document.fullscreenElement) {
+              if (viewport.requestFullscreen) {
+                viewport.requestFullscreen();
+              }
+            } else {
+              document.exitFullscreen();
+            }
+          });
+        });
+      }
 
       img.addEventListener('load', fitFullView);
       if (img.complete) img.dispatchEvent(new Event('load'));
-
-      return { applyTransform: applyTransform, fitFullView: fitFullView };
     }
 
-    viewports.forEach(function (vp, i) { initZoomPan(vp, i); });
+    viewports.forEach(function (vp) { initZoomPan(vp); });
   </script>
 </body>
 </html>

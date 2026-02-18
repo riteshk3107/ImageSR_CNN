@@ -10,7 +10,7 @@ import torch
 from flask import Flask, render_template, request
 from PIL import Image
 
-from srcnn import SRCNN
+from srcnn import ResidualSRCNN  # must match class name in srcnn.py
 
 
 app = Flask(__name__)
@@ -28,7 +28,7 @@ def load_model() -> bool:
     global model
     if not os.path.isfile(MODEL_PATH):
         return False
-    m = SRCNN().to(device)
+    m = ResidualSRCNN().to(device)
     state = torch.load(MODEL_PATH, map_location=device)
     m.load_state_dict(state)
     m.eval()
@@ -110,18 +110,20 @@ def index():
         return render_template("index.html", result=None, error=f"Invalid image: {e}")
 
     try:
-        _, bicubic_y, inp, cb, cr = preprocess_for_srcnn(pil_img)
+        original_y, bicubic_y, inp, cb, cr = preprocess_for_srcnn(pil_img)
         sr_y = run_srcnn(inp)
 
+        original_rgb = merge_ycbcr(original_y, cb, cr)
         low_res_rgb = merge_ycbcr(bicubic_y, cb, cr)
         srcnn_rgb = merge_ycbcr(sr_y, cb, cr)
 
+        original_b64 = pil_to_base64(original_rgb)
         low_res_b64 = pil_to_base64(low_res_rgb)
         srcnn_b64 = pil_to_base64(srcnn_rgb)
 
         return render_template(
             "index.html",
-            result={"low_res": low_res_b64, "srcnn": srcnn_b64},
+            result={"original": original_b64, "low_res": low_res_b64, "srcnn": srcnn_b64},
             error=None,
         )
     except Exception as e:
